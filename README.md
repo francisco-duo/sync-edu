@@ -3,8 +3,9 @@
 Projeto de portfólio (totalmente fictício): mantém um sistema acadêmico sincronizado com um
 provedor externo de contas e turmas por **reconciliação** (estado desejado × estado atual).
 
-> Status: **fundação** pronta (monorepo, Docker, PostgreSQL, Alembic, CI).
-> O algoritmo de sincronização ainda não foi implementado.
+> Status: reconciliação, execução resiliente (retry/backoff, falha parcial), dry-run,
+> reprocessamento (`retry-failed`) e auditoria no PostgreSQL implementados.
+> Ainda faltam: seed de escala (4.000 alunos), logs JSON, benchmark e agendador.
 > A especificação completa está em [docs/ESPECIFICACAO.md](docs/ESPECIFICACAO.md).
 
 ## Serviços
@@ -28,6 +29,24 @@ docker compose down         # derruba (use -v para apagar o banco)
 
 Verificação rápida: <http://localhost:8000/health> (devolve `{"status":"ok","db":"ok"}`).
 Swagger de cada serviço em `/docs`.
+
+## Usando a API
+
+```bash
+curl -X POST "localhost:8000/sync-runs?dry_run=true"    # só calcula e devolve o plano (200)
+curl -X POST "localhost:8000/sync-runs"                 # executa em segundo plano (202)
+curl localhost:8000/sync-runs/<id>                      # status e contadores
+curl "localhost:8000/sync-runs/<id>/actions?status=failed"
+curl -X POST localhost:8000/sync-runs/<id>/retry-failed # reprocessa só o que falhou
+```
+
+Swagger em <http://localhost:8000/docs>. Para ver a resiliência, derrube/atrapalhe o provedor:
+
+```bash
+curl -X PUT localhost:8002/_admin/chaos -H 'content-type: application/json' \
+     -d '{"error_rate":0.25,"lose_response_rate":0.1,"retry_after_seconds":0,"seed":3}'
+curl -X POST localhost:8000/sync-runs      # termina com retries; a sync seguinte tem 0 ações
+```
 
 ## Desenvolvimento local
 

@@ -17,7 +17,7 @@ from sync_service.domain.models import (
 )
 
 # Fases de execução. Dentro de cada fase as ações são independentes entre si.
-_PHASE: dict[ActionType, int] = {
+PHASE_BY_TYPE: dict[ActionType, int] = {
     ActionType.CREATE_CLASS: 0,
     ActionType.CREATE_USER: 1,
     ActionType.REACTIVATE_USER: 1,
@@ -63,7 +63,7 @@ def reconcile(
         *_add_to_classes(to_add, set(new_class_ids), set(new_student_ids), set(returning_ids)),
         *_suspend_users(leaving_ids),
     ]
-    return sorted(actions, key=lambda action: (_PHASE[action.type], action.key))
+    return sorted(actions, key=lambda action: (PHASE_BY_TYPE[action.type], action.key))
 
 
 def _create_classes(desired: DesiredState, class_ids: list[str]) -> list[SyncAction]:

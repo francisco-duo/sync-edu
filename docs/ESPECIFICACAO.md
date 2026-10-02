@@ -902,3 +902,19 @@ Cada etapa termina com testes passando e `ruff` limpo.
 
 **ADR-011 — Concorrência limitada + persistência em lote por uma única rotina.**
 - Consequências: respeita rate limit e a restrição de `AsyncSession`, e evita N+1. Perde um pouco de vazão nas barreiras entre lotes/fases (medido no benchmark).
+
+---
+
+## 16. Ajustes feitos durante a implementação
+
+- **`last_attempt_at`** em `sync_actions`: horário da última tentativa (a spec só tinha `updated_at`).
+- **Erros em `resilience/errors.py`** (e não em `providers/errors.py`): a classificação transitório/permanente
+  é usada também pelo cliente do acadêmico.
+- **Mocks com `routes.py` único** em vez de uma pasta `routes/`: são pequenos.
+- **`id_mappings` espelha o snapshot** em runs reais: vínculos que sumiram do provedor são removidos e os
+  que faltam são inseridos (o provedor pode reaproveitar ids). Dry-run não escreve mapeamentos.
+  O `retry-failed` resolve ids pela tabela, sem buscar o estado de novo.
+- **Rate limit do lado do cliente** (`PROVIDER_MAX_RPS`) **ainda não foi implementado**: só semáforo,
+  `Retry-After` e backoff.
+- **Dry-run persiste** o run e as ações com status `planned`.
+

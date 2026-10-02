@@ -26,6 +26,9 @@ services:
 
   mock-academico:
     build: ./services/mock-academico
+    environment:
+      SEED_STUDENTS: ${SEED_STUDENTS:-20}
+      SEED_CLASSES: ${SEED_CLASSES:-3}
     ports:
       - "${MOCK_ACADEMICO_PORT:-8001}:8000"
     healthcheck:
@@ -37,6 +40,10 @@ services:
 
   mock-provedor:
     build: ./services/mock-provedor
+    environment:
+      CHAOS_ERROR_RATE: ${PROVEDOR_CHAOS_ERROR_RATE:-0}
+      CHAOS_LOSE_RESPONSE_RATE: ${PROVEDOR_CHAOS_LOSE_RESPONSE_RATE:-0}
+      CHAOS_RETRY_AFTER_SECONDS: ${PROVEDOR_CHAOS_RETRY_AFTER_SECONDS:-1}
     ports:
       - "${MOCK_PROVEDOR_PORT:-8002}:8000"
     healthcheck:
@@ -53,6 +60,15 @@ services:
       ACADEMICO_BASE_URL: http://mock-academico:8000
       PROVEDOR_BASE_URL: http://mock-provedor:8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-5}
+      RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-0.5}
+      RETRY_FACTOR: ${RETRY_FACTOR:-2}
+      RETRY_MAX_DELAY_SECONDS: ${RETRY_MAX_DELAY_SECONDS:-30}
+      RETRY_JITTER: ${RETRY_JITTER:-full}
+      RETRY_MAX_ELAPSED_SECONDS: ${RETRY_MAX_ELAPSED_SECONDS:-120}
+      PROVIDER_CONCURRENCY: ${PROVIDER_CONCURRENCY:-10}
+      BATCH_SIZE: ${BATCH_SIZE:-200}
+      MAX_CONSECUTIVE_FAILURES: ${MAX_CONSECUTIVE_FAILURES:-25}
     ports:
       - "${SYNC_SERVICE_PORT:-8000}:8000"
     depends_on:

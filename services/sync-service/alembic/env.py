@@ -13,7 +13,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-# Importe aqui os módulos com os modelos ORM para o autogenerate enxergá-los.
+from sync_service.db import models  # noqa: E402, F401  (registra os modelos no metadata)
+
 target_metadata = Base.metadata
 
 
