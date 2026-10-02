@@ -4,6 +4,8 @@
 
 [tool.pytest.ini_options]
 testpaths = ["services", "tests"]
+# Permite `import sync_testkit` (utilitários de teste do sync-service) nos testes.
+pythonpath = ["services/sync-service/tests"]
 # importlib: permite arquivos de teste com o mesmo nome em serviços diferentes.
 # Por padrão não roda os testes que precisam de PostgreSQL ou do docker compose;
 # eles são pedidos explicitamente com `pytest -m integration` / `-m e2e`.

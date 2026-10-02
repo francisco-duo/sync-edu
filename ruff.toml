@@ -4,6 +4,7 @@ src = [
     "services/mock-academico/src",
     "services/mock-provedor/src",
     "services/sync-service/src",
+    "services/sync-service/tests",
 ]
 
 [lint]
