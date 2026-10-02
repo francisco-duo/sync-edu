@@ -47,6 +47,7 @@ async def retry_async[T](
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     uniform: Callable[[float, float], float] = random.uniform,
     monotonic: Callable[[], float] = time.monotonic,
+    on_retry: Callable[[BaseException], None] | None = None,
 ) -> T:
     """Executa `operation`; repete só erros retentáveis. Erros permanentes sobem na hora."""
     started = monotonic()
@@ -63,6 +64,8 @@ async def retry_async[T](
             delay = _next_delay(policy, attempt, exc, retry_after, uniform)
             if monotonic() - started + delay > policy.max_elapsed:
                 raise RetriesExhaustedError(attempt, exc) from exc
+            if on_retry is not None:
+                on_retry(exc)
             await sleep(delay)
 
 

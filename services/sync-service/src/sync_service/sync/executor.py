@@ -85,12 +85,14 @@ class ActionExecutor:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         uniform: Callable[[float, float], float] = random.uniform,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        on_retry: Callable[[BaseException], None] | None = None,
     ) -> None:
         self._provider = provider
         self._config = config
         self._sleep = sleep
         self._uniform = uniform
         self._now = now
+        self._on_retry = on_retry
 
     async def run(
         self,
@@ -138,7 +140,11 @@ class ActionExecutor:
 
         try:
             applied = await retry_async(
-                operation, self._config.retry_policy, sleep=self._sleep, uniform=self._uniform
+                operation,
+                self._config.retry_policy,
+                sleep=self._sleep,
+                uniform=self._uniform,
+                on_retry=self._on_retry,
             )
         except RetriesExhaustedError as exc:
             return self._failed(action, calls, ErrorCode.RETRIES_EXHAUSTED, str(exc.last_error))

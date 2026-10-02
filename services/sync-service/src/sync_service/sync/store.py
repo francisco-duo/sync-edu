@@ -8,7 +8,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -251,25 +251,48 @@ async def load_pending_actions(sessions: SessionFactory, run_id: uuid.UUID) -> l
         ]
 
 
+# Um único UPDATE por lote (em vez de um comando por ação): os valores viajam como arrays e o
+# PostgreSQL faz o join com `unnest`. 1 ida ao banco para N linhas, usando a chave primária.
+_BULK_UPDATE_ACTIONS = text(
+    """
+    UPDATE sync_actions AS a
+    SET status = v.status,
+        outcome = v.outcome,
+        attempts = v.attempts,
+        error_code = v.error_code,
+        last_error = v.last_error,
+        last_attempt_at = v.last_attempt_at,
+        updated_at = now()
+    FROM unnest(
+        CAST(:ids AS bigint[]),
+        CAST(:statuses AS varchar[]),
+        CAST(:outcomes AS varchar[]),
+        CAST(:attempts AS integer[]),
+        CAST(:error_codes AS varchar[]),
+        CAST(:last_errors AS text[]),
+        CAST(:attempted_at AS timestamptz[])
+    ) AS v(id, status, outcome, attempts, error_code, last_error, last_attempt_at)
+    WHERE a.id = v.id
+    """
+)
+
+
 async def persist_results(sessions: SessionFactory, results: Sequence[ActionResult]) -> None:
     """Grava um lote de resultados (e os mapeamentos criados) numa única transação."""
     if not results:
         return
-    updates = [
-        {
-            "id": r.action_id,
-            "status": r.status.value,
-            "outcome": r.outcome.value if r.outcome else None,
-            "attempts": r.attempts,
-            "error_code": r.error_code,
-            "last_error": r.last_error,
-            "last_attempt_at": r.attempted_at,
-        }
-        for r in results
-    ]
+    params = {
+        "ids": [r.action_id for r in results],
+        "statuses": [r.status.value for r in results],
+        "outcomes": [r.outcome.value if r.outcome else None for r in results],
+        "attempts": [r.attempts for r in results],
+        "error_codes": [r.error_code for r in results],
+        "last_errors": [r.last_error for r in results],
+        "attempted_at": [r.attempted_at for r in results],
+    }
     mappings = [r.mapping for r in results if r.mapping is not None]
     async with sessions() as session, session.begin():
-        await session.execute(update(SyncAction), updates)
+        await session.execute(_BULK_UPDATE_ACTIONS, params)
         await _upsert_mappings(session, mappings)
 
 

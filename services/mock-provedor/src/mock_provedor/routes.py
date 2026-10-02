@@ -198,6 +198,8 @@ class ChaosConfig(BaseModel):
     error_rate: float = Field(default=0.0, ge=0, le=1)
     lose_response_rate: float = Field(default=0.0, ge=0, le=1)
     retry_after_seconds: int = Field(default=1, ge=0)
+    rate_limit_rps: int = Field(default=0, ge=0)
+    latency_ms: int = Field(default=0, ge=0)
     seed: int | None = None
     fail_next: list[int] = Field(default_factory=list)
     lose_next: int = Field(default=0, ge=0)
@@ -208,6 +210,8 @@ def _chaos_out(chaos: ChaosState) -> dict[str, Any]:
         "error_rate": chaos.error_rate,
         "lose_response_rate": chaos.lose_response_rate,
         "retry_after_seconds": chaos.retry_after_seconds,
+        "rate_limit_rps": chaos.rate_limit_rps,
+        "latency_ms": chaos.latency_ms,
         "seed": chaos.seed,
         "fail_next": list(chaos.fail_next),
         "lose_next": chaos.lose_next,
@@ -230,6 +234,17 @@ async def get_chaos(request: Request) -> dict[str, Any]:
 async def get_stats(request: Request) -> dict[str, object]:
     stats: Stats = request.app.state.stats
     return stats.as_dict()
+
+
+@admin_router.get("/summary")
+async def get_summary(request: Request) -> dict[str, int]:
+    store = _store(request)
+    return {
+        "users_active": sum(u.status == "active" for u in store.users.values()),
+        "users_suspended": sum(u.status == "suspended" for u in store.users.values()),
+        "classes": len(store.classes),
+        "memberships": sum(len(members) for members in store.members.values()),
+    }
 
 
 @admin_router.post("/reset")

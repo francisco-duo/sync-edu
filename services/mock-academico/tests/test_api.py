@@ -95,3 +95,16 @@ def test_substituir_o_estado_inteiro(client: TestClient) -> None:
     assert client.put("/_admin/state", json=state).json() == {"students": 1, "classes": 1}
     assert client.get("/students").json()["total"] == 1
     assert client.get("/enrollments").json()["items"][0]["class_id"] == "A"
+
+
+def test_stats_contam_as_requisicoes_por_rota_e_status(client: TestClient) -> None:
+    client.get("/students")
+    client.get("/students")
+    client.get("/students/NOPE")  # 404
+    client.get("/health")  # não conta
+
+    stats = client.get("/_admin/stats").json()
+
+    assert stats["total"] == 3
+    assert stats["by_route"] == {"GET /students": 2, "GET /students/{student_id}": 1}
+    assert stats["by_status"] == {"200": 2, "404": 1}

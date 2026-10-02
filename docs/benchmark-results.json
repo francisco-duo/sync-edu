@@ -1,0 +1,258 @@
+{
+  "label": "padrao-1",
+  "environment": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpus": 12,
+    "python_client": "3.13.14"
+  },
+  "parameters": {
+    "students": 4000,
+    "classes": 90,
+    "seed": 42,
+    "daily_changes": {
+      "new_students": 100,
+      "left_students": 100,
+      "moved_students": 200,
+      "new_classes": 5
+    },
+    "provider_chaos": {
+      "error_rate": 0.0,
+      "lose_response_rate": 0.0,
+      "rate_limit_rps": 0,
+      "latency_ms": 0,
+      "retry_after_seconds": 1
+    }
+  },
+  "dataset": {
+    "students_active": 4000,
+    "students_inactive": 0,
+    "classes": 90,
+    "enrollments_active": 4000
+  },
+  "results": [
+    {
+      "scenario": "A0 dry-run",
+      "status": "planned",
+      "wall_seconds": 1.61,
+      "actions": 8090,
+      "actions_by_type": {
+        "CREATE_USER": 4000,
+        "ADD_TO_CLASS": 4000,
+        "CREATE_CLASS": 90
+      },
+      "succeeded": 0,
+      "failed": 0,
+      "skipped": 0,
+      "requests_provedor": 2,
+      "requests_provedor_writes": 0,
+      "requests_academico": 17,
+      "responses_429": 0,
+      "responses_5xx": 0,
+      "retries_provedor": 0,
+      "retries_academico": 0,
+      "fetch_ms": 258,
+      "reconcile_ms": 59,
+      "execute_ms": null,
+      "client_http_calls": {
+        "provedor": 2,
+        "academico": 17
+      },
+      "error": null,
+      "response_megabytes": 3.86
+    },
+    {
+      "scenario": "A abertura do período",
+      "status": "succeeded",
+      "wall_seconds": 22.27,
+      "actions": 8090,
+      "actions_by_type": {
+        "CREATE_USER": 4000,
+        "ADD_TO_CLASS": 4000,
+        "CREATE_CLASS": 90
+      },
+      "succeeded": 8090,
+      "failed": 0,
+      "skipped": 0,
+      "requests_provedor": 8092,
+      "requests_provedor_writes": 8090,
+      "requests_academico": 17,
+      "responses_429": 0,
+      "responses_5xx": 0,
+      "retries_provedor": 0,
+      "retries_academico": 0,
+      "fetch_ms": 265,
+      "reconcile_ms": 55,
+      "execute_ms": 21036,
+      "client_http_calls": {
+        "provedor": 8092,
+        "academico": 17
+      },
+      "error": null,
+      "consistente": {
+        "ok": true,
+        "detalhe": {
+          "usuarios_ativos": {
+            "provedor": 4000,
+            "academico": 4000
+          },
+          "usuarios_suspensos": {
+            "provedor": 0,
+            "academico": 0
+          },
+          "turmas": {
+            "provedor": 90,
+            "academico": 90
+          },
+          "matriculas": {
+            "provedor": 4000,
+            "academico": 4000
+          }
+        }
+      }
+    },
+    {
+      "scenario": "B sem alterações",
+      "status": "succeeded",
+      "wall_seconds": 0.52,
+      "actions": 0,
+      "actions_by_type": {},
+      "succeeded": 0,
+      "failed": 0,
+      "skipped": 0,
+      "requests_provedor": 99,
+      "requests_provedor_writes": 0,
+      "requests_academico": 17,
+      "responses_429": 0,
+      "responses_5xx": 0,
+      "retries_provedor": 0,
+      "retries_academico": 0,
+      "fetch_ms": 385,
+      "reconcile_ms": 7,
+      "execute_ms": 6,
+      "client_http_calls": {
+        "provedor": 99,
+        "academico": 17
+      },
+      "error": null,
+      "consistente": {
+        "ok": true,
+        "detalhe": {
+          "usuarios_ativos": {
+            "provedor": 4000,
+            "academico": 4000
+          },
+          "usuarios_suspensos": {
+            "provedor": 0,
+            "academico": 0
+          },
+          "turmas": {
+            "provedor": 90,
+            "academico": 90
+          },
+          "matriculas": {
+            "provedor": 4000,
+            "academico": 4000
+          }
+        }
+      }
+    },
+    {
+      "scenario": "C alterações diárias",
+      "status": "succeeded",
+      "wall_seconds": 2.43,
+      "actions": 805,
+      "actions_by_type": {
+        "CREATE_USER": 100,
+        "ADD_TO_CLASS": 300,
+        "CREATE_CLASS": 5,
+        "SUSPEND_USER": 100,
+        "REMOVE_FROM_CLASS": 300
+      },
+      "succeeded": 805,
+      "failed": 0,
+      "skipped": 0,
+      "requests_provedor": 904,
+      "requests_provedor_writes": 805,
+      "requests_academico": 17,
+      "responses_429": 0,
+      "responses_5xx": 0,
+      "retries_provedor": 0,
+      "retries_academico": 0,
+      "fetch_ms": 408,
+      "reconcile_ms": 9,
+      "execute_ms": 1890,
+      "client_http_calls": {
+        "provedor": 904,
+        "academico": 17
+      },
+      "error": null,
+      "consistente": {
+        "ok": true,
+        "detalhe": {
+          "usuarios_ativos": {
+            "provedor": 4000,
+            "academico": 4000
+          },
+          "usuarios_suspensos": {
+            "provedor": 100,
+            "academico": 100
+          },
+          "turmas": {
+            "provedor": 95,
+            "academico": 95
+          },
+          "matriculas": {
+            "provedor": 4000,
+            "academico": 4000
+          }
+        }
+      }
+    },
+    {
+      "scenario": "B2 sem alterações (de novo)",
+      "status": "succeeded",
+      "wall_seconds": 0.57,
+      "actions": 0,
+      "actions_by_type": {},
+      "succeeded": 0,
+      "failed": 0,
+      "skipped": 0,
+      "requests_provedor": 105,
+      "requests_provedor_writes": 0,
+      "requests_academico": 17,
+      "responses_429": 0,
+      "responses_5xx": 0,
+      "retries_provedor": 0,
+      "retries_academico": 0,
+      "fetch_ms": 371,
+      "reconcile_ms": 6,
+      "execute_ms": 9,
+      "client_http_calls": {
+        "provedor": 105,
+        "academico": 17
+      },
+      "error": null,
+      "consistente": {
+        "ok": true,
+        "detalhe": {
+          "usuarios_ativos": {
+            "provedor": 4000,
+            "academico": 4000
+          },
+          "usuarios_suspensos": {
+            "provedor": 100,
+            "academico": 100
+          },
+          "turmas": {
+            "provedor": 95,
+            "academico": 95
+          },
+          "matriculas": {
+            "provedor": 4000,
+            "academico": 4000
+          }
+        }
+      }
+    }
+  ]
+}

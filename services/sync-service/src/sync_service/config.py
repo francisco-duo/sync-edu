@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     # Concorrência e execução
     snapshot_concurrency: int = Field(default=5, ge=1)
     provider_concurrency: int = Field(default=10, ge=1)
+    provider_max_rps: float = Field(default=0.0, ge=0)  # 0 = sem limite de taxa no cliente
     batch_size: int = Field(default=200, ge=1)
     max_consecutive_failures: int = Field(default=25, ge=1)
 

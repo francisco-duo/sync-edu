@@ -182,3 +182,34 @@ def test_teto_do_atraso_por_numero_do_retry() -> None:
     policy = RetryPolicy(base_delay=0.5, factor=2.0, max_delay=3.0)
 
     assert [policy.delay_cap(n) for n in range(1, 6)] == [0.5, 1.0, 2.0, 3.0, 3.0]
+
+
+async def test_on_retry_e_chamado_uma_vez_por_nova_tentativa() -> None:
+    clock, operation = FakeClock(), Flaky(transient(), transient())
+    retried: list[BaseException] = []
+
+    await retry_async(
+        operation,
+        NO_JITTER,
+        sleep=clock.sleep,
+        monotonic=clock.monotonic,
+        on_retry=retried.append,
+    )
+
+    assert len(retried) == 2  # 3 tentativas = 2 retries; a 1ª tentativa não conta
+
+
+async def test_on_retry_nao_conta_a_tentativa_final_que_esgota() -> None:
+    clock, operation = FakeClock(), Flaky(*[transient() for _ in range(10)])
+    retried: list[BaseException] = []
+
+    with pytest.raises(RetriesExhaustedError):
+        await retry_async(
+            operation,
+            NO_JITTER,
+            sleep=clock.sleep,
+            monotonic=clock.monotonic,
+            on_retry=retried.append,
+        )
+
+    assert len(retried) == NO_JITTER.max_attempts - 1

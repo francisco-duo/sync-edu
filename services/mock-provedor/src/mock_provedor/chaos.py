@@ -4,13 +4,14 @@ Há modo probabilístico (`*_rate`, com semente) e modo roteirizado (`fail_next`
 este último para testes determinísticos.
 """
 
+import asyncio
 import random
-from collections import Counter
-from collections.abc import Awaitable, Callable
+import time
+from collections import Counter, deque
 from dataclasses import dataclass, field
 
-from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from mock_provedor.errors import error_body
 
@@ -22,10 +23,13 @@ class ChaosState:
     error_rate: float = 0.0
     lose_response_rate: float = 0.0
     retry_after_seconds: int = 1
+    rate_limit_rps: int = 0  # 0 = sem limite; acima disso, 429 (janela deslizante de 1 s)
+    latency_ms: int = 0  # atraso artificial em toda requisição de negócio
     seed: int | None = None
     fail_next: list[int] = field(default_factory=list)  # status a devolver nas próximas requisições
     lose_next: int = 0  # quantas próximas respostas bem-sucedidas serão "perdidas"
     _rng: random.Random = field(default_factory=random.Random, repr=False)
+    _window: deque[float] = field(default_factory=deque, repr=False)
 
     def configure(
         self,
@@ -36,10 +40,15 @@ class ChaosState:
         seed: int | None,
         fail_next: list[int],
         lose_next: int,
+        rate_limit_rps: int = 0,
+        latency_ms: int = 0,
     ) -> None:
         self.error_rate = error_rate
         self.lose_response_rate = lose_response_rate
         self.retry_after_seconds = retry_after_seconds
+        self.rate_limit_rps = rate_limit_rps
+        self.latency_ms = latency_ms
+        self._window.clear()
         self.seed = seed
         self.fail_next = list(fail_next)
         self.lose_next = lose_next
@@ -51,6 +60,18 @@ class ChaosState:
         if self._rng.random() < self.error_rate:
             return self._rng.choice(FAILURE_STATUSES)
         return None
+
+    def over_rate_limit(self) -> bool:
+        """Janela deslizante de 1 s. Requisições recusadas não consomem a cota."""
+        if self.rate_limit_rps <= 0:
+            return False
+        now = time.monotonic()
+        while self._window and now - self._window[0] >= 1.0:
+            self._window.popleft()
+        if len(self._window) >= self.rate_limit_rps:
+            return True
+        self._window.append(now)
+        return False
 
     def lose_this_response(self) -> bool:
         if self.lose_next > 0:
@@ -90,31 +111,55 @@ def _injected(status: int, retry_after: int) -> JSONResponse:
     )
 
 
-def _route_key(request: Request) -> str:
-    route = request.scope.get("route")
-    path = getattr(route, "path", request.url.path)
-    return f"{request.method} {path}"
+def _route_key(scope: Scope) -> str:
+    route = scope.get("route")
+    path = getattr(route, "path", scope["path"])
+    return f"{scope['method']} {path}"
 
 
-async def chaos_middleware(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    path = request.url.path
-    if path == "/health" or path.startswith("/_admin"):
-        return await call_next(request)
+class ChaosMiddleware:
+    """Middleware ASGI puro (`BaseHTTPMiddleware` cria tarefas por requisição e é bem mais lento).
 
-    chaos: ChaosState = request.app.state.chaos
-    stats: Stats = request.app.state.stats
+    Aplica falhas injetadas e conta as requisições. `/health` e `/_admin/*` ficam de fora.
+    """
 
-    status = chaos.failure_before_processing()
-    if status is not None:
-        response: Response = _injected(status, chaos.retry_after_seconds)
-        stats.record(_route_key(request), status)
-        return response
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-    response = await call_next(request)
-    if chaos.lose_this_response():
-        # A operação JÁ foi aplicada; só a resposta some. É o caso difícil da idempotência.
-        response = _injected(503, chaos.retry_after_seconds)
-    stats.record(_route_key(request), response.status_code)
-    return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope.get("path", "")
+        if scope["type"] != "http" or path == "/health" or path.startswith("/_admin"):
+            await self.app(scope, receive, send)
+            return
+
+        state = scope["app"].state
+        chaos: ChaosState = state.chaos
+        stats: Stats = state.stats
+
+        if chaos.latency_ms:
+            await asyncio.sleep(chaos.latency_ms / 1000)
+        status = chaos.failure_before_processing()
+        if status is None and chaos.over_rate_limit():
+            status = 429
+        if status is not None:
+            stats.record(_route_key(scope), status)
+            await _injected(status, chaos.retry_after_seconds)(scope, receive, send)
+            return
+
+        lose_response = chaos.lose_this_response()
+        sent_status = 0
+
+        async def capture(message: Message) -> None:
+            nonlocal sent_status
+            if message["type"] == "http.response.start":
+                sent_status = message["status"]
+            if not lose_response:
+                await send(message)
+
+        await self.app(scope, receive, capture)
+        if lose_response:
+            # A operação JÁ foi aplicada; só a resposta some. É o caso difícil da idempotência.
+            stats.record(_route_key(scope), 503)
+            await _injected(503, chaos.retry_after_seconds)(scope, receive, send)
+            return
+        stats.record(_route_key(scope), sent_status)

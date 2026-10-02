@@ -3,9 +3,9 @@
 Projeto de portfólio (totalmente fictício): mantém um sistema acadêmico sincronizado com um
 provedor externo de contas e turmas por **reconciliação** (estado desejado × estado atual).
 
-> Status: reconciliação, execução resiliente (retry/backoff, falha parcial), dry-run,
-> reprocessamento (`retry-failed`) e auditoria no PostgreSQL implementados.
-> Ainda faltam: seed de escala (4.000 alunos), logs JSON, benchmark e agendador.
+> Status: reconciliação, execução resiliente (retry/backoff, limite de taxa, falha parcial),
+> dry-run, reprocessamento (`retry-failed`), auditoria no PostgreSQL e benchmark em escala
+> implementados. Ainda faltam: logs JSON e o agendador diário.
 > A especificação completa está em [docs/ESPECIFICACAO.md](docs/ESPECIFICACAO.md).
 
 ## Serviços
@@ -47,6 +47,33 @@ curl -X PUT localhost:8002/_admin/chaos -H 'content-type: application/json' \
      -d '{"error_rate":0.25,"lose_response_rate":0.1,"retry_after_seconds":0,"seed":3}'
 curl -X POST localhost:8000/sync-runs      # termina com retries; a sync seguinte tem 0 ações
 ```
+
+## Benchmark (números medidos)
+
+Escala de demonstração, gerada com Faker (`seed=42`), rodando em Docker na minha máquina
+(mesma máquina para todos os serviços; provedor = mock em memória). Detalhes, método, tabelas
+completas e limitações em [docs/benchmark.md](docs/benchmark.md).
+
+```text
+Dataset:
+4.000 alunos
+90 turmas
+4.000 matrículas (ativas, uma por aluno)
+
+Abertura (8.090 ações):            20,6 a 22,3 s   (3 execuções)
+Sem alterações (0 ações):          0,44 a 0,53 s   (3 execuções)
+Alterações (805 ações):            2,30 a 2,43 s   (3 execuções)
+```
+
+Alterações do cenário C: 100 alunos novos, 100 que saíram, 200 que trocaram de turma e 5 turmas
+novas. Nos três cenários o provedor terminou idêntico ao acadêmico.
+
+**Não é perfeito, e o motivo está explicado:** a abertura é limitada pela biblioteca HTTP do
+cliente (httpx: ~900 req/s no máximo, e piora com muita simultaneidade), não pelo banco nem pelo
+algoritmo. Com um provedor de latência maior (20 ms) a concorrência de 10 é a melhor medida;
+contra o mock local, 3 a 5 simultâneas levam 35-37% menos tempo (14,1-14,6 s). Com 5% de erros 5xx e 2% de
+respostas perdidas injetados, a abertura levou 43 s, com 571 retries, **0 falhas** e a sync
+seguinte com 0 ações. Rodar de novo: `python scripts/benchmark.py` (com a stack no ar).
 
 ## Desenvolvimento local
 

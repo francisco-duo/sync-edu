@@ -914,7 +914,12 @@ Cada etapa termina com testes passando e `ruff` limpo.
 - **`id_mappings` espelha o snapshot** em runs reais: vínculos que sumiram do provedor são removidos e os
   que faltam são inseridos (o provedor pode reaproveitar ids). Dry-run não escreve mapeamentos.
   O `retry-failed` resolve ids pela tabela, sem buscar o estado de novo.
-- **Rate limit do lado do cliente** (`PROVIDER_MAX_RPS`) **ainda não foi implementado**: só semáforo,
-  `Retry-After` e backoff.
+- **Rate limit do lado do cliente** (`PROVIDER_MAX_RPS`, desligado por padrão) foi implementado depois,
+  junto com o semáforo, o `Retry-After` e o backoff. Veja `docs/benchmark.md`.
 - **Dry-run persiste** o run e as ações com status `planned`.
+- **Telemetria** (`telemetry.py`): contadores de requisições e retries por sistema, gravados em
+  `sync_runs.metrics` (`http_calls`, `retries`).
+- **Mocks mais completos:** `mock-academico` com Faker e `/_admin/changes` (alterações diárias);
+  `mock-provedor` com limite de taxa, latência e `/_admin/summary`. Ambos têm `/_admin/stats`.
+- **Persistência dos resultados** em um único `UPDATE ... FROM unnest(...)` por lote.
 

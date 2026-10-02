@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -229,3 +231,71 @@ class TestFalhasInjetadas:
         assert stats["total"] == 3
         assert stats["by_route"] == {"POST /users": 2, "GET /users": 1}
         assert stats["by_status"] == {"201": 1, "409": 1, "200": 1}
+
+
+class TestLimiteDeTaxa:
+    def test_acima_do_limite_responde_429_com_retry_after(self, client: TestClient) -> None:
+        client.put("/_admin/chaos", json={"rate_limit_rps": 3, "retry_after_seconds": 2})
+
+        statuses = [client.get("/users").status_code for _ in range(5)]
+
+        assert statuses == [200, 200, 200, 429, 429]
+        rejected = client.get("/users")
+        assert rejected.json()["error"]["code"] == "RATE_LIMITED"
+        assert rejected.headers["Retry-After"] == "2"
+
+    def test_requisicoes_recusadas_nao_consomem_a_cota_e_a_janela_se_renova(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        clock = {"now": 100.0}
+        monkeypatch.setattr("mock_provedor.chaos.time.monotonic", lambda: clock["now"])
+        client.put("/_admin/chaos", json={"rate_limit_rps": 2})
+
+        assert [client.get("/users").status_code for _ in range(4)] == [200, 200, 429, 429]
+        clock["now"] += 1.01  # passou 1 s: a janela esvaziou
+
+        assert [client.get("/users").status_code for _ in range(3)] == [200, 200, 429]
+
+    def test_health_e_admin_nao_contam_para_o_limite(self, client: TestClient) -> None:
+        client.put("/_admin/chaos", json={"rate_limit_rps": 1})
+
+        for _ in range(5):
+            assert client.get("/health").status_code == 200
+            assert client.get("/_admin/stats").status_code == 200
+        assert client.get("/users").status_code == 200
+
+    def test_limite_zero_significa_sem_limite(self, client: TestClient) -> None:
+        client.put("/_admin/chaos", json={"rate_limit_rps": 0})
+
+        assert {client.get("/users").status_code for _ in range(50)} == {200}
+
+
+def test_summary_conta_usuarios_turmas_e_membros(client: TestClient) -> None:
+    class_id = new_class(client).json()["id"]
+    first = new_user(client).json()["id"]
+    second = new_user(client, "S2", "b@example.edu").json()["id"]
+    client.post(f"/classes/{class_id}/members", json={"user_id": first})
+    client.post(f"/users/{second}/suspend")
+
+    assert client.get("/_admin/summary").json() == {
+        "users_active": 1,
+        "users_suspended": 1,
+        "classes": 1,
+        "memberships": 1,
+    }
+
+
+def test_latencia_artificial_atrasa_as_requisicoes_de_negocio_mas_nao_o_health(
+    client: TestClient,
+) -> None:
+    client.put("/_admin/chaos", json={"latency_ms": 80})
+
+    started = time.perf_counter()
+    client.get("/users")
+    business = time.perf_counter() - started
+    started = time.perf_counter()
+    client.get("/health")
+    health = time.perf_counter() - started
+
+    assert business >= 0.07
+    assert health < 0.05

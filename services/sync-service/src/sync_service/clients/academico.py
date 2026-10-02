@@ -40,6 +40,7 @@ class AcademicoClient:
         page_size: int = 500,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         uniform: Callable[[float, float], float] = random.uniform,
+        on_retry: Callable[[BaseException], None] | None = None,
     ) -> None:
         self._client = client
         self._policy = retry_policy
@@ -47,6 +48,7 @@ class AcademicoClient:
         self._page_size = page_size
         self._sleep = sleep
         self._uniform = uniform
+        self._on_retry = on_retry
 
     async def fetch_desired_state(self) -> DesiredState:
         """Estado desejado: alunos e matrículas ativos, mais todas as turmas."""
@@ -70,6 +72,7 @@ class AcademicoClient:
                 self._policy,
                 sleep=self._sleep,
                 uniform=self._uniform,
+                on_retry=self._on_retry,
             )
 
         return await fetch_all(fetch_page, page_size=self._page_size, concurrency=self._concurrency)

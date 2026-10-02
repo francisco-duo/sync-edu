@@ -6,7 +6,16 @@ from pydantic import BaseModel, Field
 
 from mock_academico.config import Settings
 from mock_academico.errors import ApiError
-from mock_academico.store import Enrollment, SchoolClass, Store, Student, generate
+from mock_academico.store import (
+    ChangeRequestError,
+    Enrollment,
+    SchoolClass,
+    Store,
+    Student,
+    apply_daily_changes,
+    generate,
+    summary,
+)
 
 PageNumber = Annotated[int, Query(ge=1)]
 PageSize = Annotated[int, Query(ge=1, le=500)]
@@ -124,12 +133,53 @@ async def replace_state(request: Request, body: StateIn) -> dict[str, int]:
     return {"students": len(store.students), "classes": len(store.classes)}
 
 
+class ResetIn(BaseModel):
+    students: int | None = Field(default=None, ge=0, le=100_000)
+    classes: int | None = Field(default=None, ge=0, le=1_000)
+    seed: int | None = None
+
+
+class ChangesIn(BaseModel):
+    new_students: int = Field(default=0, ge=0)
+    left_students: int = Field(default=0, ge=0)
+    moved_students: int = Field(default=0, ge=0)
+    new_classes: int = Field(default=0, ge=0)
+    seed: int = 1
+
+
 @admin_router.post("/reset")
-async def reset(request: Request) -> dict[str, int]:
+async def reset(request: Request, body: ResetIn | None = None) -> dict[str, int]:
+    """Recria o dataset com Faker. Sem corpo, usa os valores de SEED_* do ambiente."""
     settings: Settings = request.app.state.settings
-    store = generate(settings.seed_students, settings.seed_classes, settings.seed_random)
+    body = body or ResetIn()
+    store = generate(
+        settings.seed_students if body.students is None else body.students,
+        settings.seed_classes if body.classes is None else body.classes,
+        settings.seed_random if body.seed is None else body.seed,
+    )
     request.app.state.store = store
-    return {"students": len(store.students), "classes": len(store.classes)}
+    return summary(store)
+
+
+@admin_router.post("/changes")
+async def daily_changes(request: Request, body: ChangesIn) -> dict[str, int]:
+    """Cenário "alterações diárias": novos alunos, saídas, trocas de turma e novas turmas."""
+    store = _store(request)
+    try:
+        applied = apply_daily_changes(store, **body.model_dump())
+    except ChangeRequestError as exc:
+        raise ApiError(422, "INVALID_CHANGES", str(exc)) from exc
+    return {**applied, **summary(store)}
+
+
+@admin_router.get("/stats")
+async def get_stats(request: Request) -> dict[str, object]:
+    return request.app.state.stats.as_dict()
+
+
+@admin_router.get("/summary")
+async def get_summary(request: Request) -> dict[str, int]:
+    return summary(_store(request))
 
 
 @admin_router.patch("/students/{student_id}")

@@ -22,6 +22,7 @@ from sync_service.sync.executor import ActionExecutor, ActionResult, MappingUpda
 from sync_service.sync.resolver import IdResolver
 from sync_service.sync.snapshot import CurrentView, build_current_view
 from sync_service.sync.status import ActionStatus, RunTrigger
+from sync_service.telemetry import Telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,14 @@ class SyncRunner:
         executor: ActionExecutor,
         *,
         email_domain: str = "example.edu",
+        telemetry: Telemetry | None = None,
     ) -> None:
         self._sessions = sessions
         self._academico = academico
         self._provider = provider
         self._executor = executor
         self._email_domain = email_domain
+        self._telemetry = telemetry or Telemetry()
         self._tasks: set[asyncio.Task[None]] = set()
 
     # --- ciclo de vida das tarefas em segundo plano ---------------------------------------
@@ -67,6 +70,7 @@ class SyncRunner:
     async def execute_run(self, run_id: uuid.UUID, *, dry_run: bool) -> None:
         """Calcula o plano e, se não for dry-run, o executa. Falhas esperadas viram `failed`."""
         metrics: dict[str, Any] = {}
+        before = self._telemetry.snapshot()
         try:
             started = time.perf_counter()
             desired, snapshot = await asyncio.gather(
@@ -90,14 +94,17 @@ class SyncRunner:
                 started = time.perf_counter()
                 aborted = await self._execute_pending(run_id, view.resolver)
                 metrics["execute_ms"] = _elapsed_ms(started)
+            metrics.update(self._telemetry_since(before))
             await store.finalize_run(self._sessions, run_id, aborted=aborted, metrics=metrics)
         except asyncio.CancelledError:
             raise  # o startup seguinte marca o run como `interrupted`
         except (UpstreamError, RetriesExhaustedError, InvalidStateError) as exc:
             logger.warning("run %s falhou: %s", run_id, exc)
+            metrics.update(self._telemetry_since(before))
             await store.finalize_run(self._sessions, run_id, error=str(exc), metrics=metrics)
         except Exception as exc:
             logger.exception("run %s falhou de forma inesperada", run_id)
+            metrics.update(self._telemetry_since(before))
             await store.finalize_run(self._sessions, run_id, error=repr(exc), metrics=metrics)
 
     async def begin_retry(self, run_id: uuid.UUID) -> bool:
@@ -110,10 +117,12 @@ class SyncRunner:
         Os ids do provedor vêm da tabela `id_mappings`, então não é preciso buscar o estado de
         novo. O plano original continua válido porque cada operação é idempotente.
         """
+        before = self._telemetry.snapshot()
         try:
             resolver = await store.load_resolver(self._sessions)
             aborted = await self._execute_pending(run_id, resolver)
-            await store.finalize_run(self._sessions, run_id, aborted=aborted)
+            metrics = {"last_retry": self._telemetry_since(before)}
+            await store.finalize_run(self._sessions, run_id, aborted=aborted, metrics=metrics)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -147,6 +156,10 @@ class SyncRunner:
 
         report = await self._executor.run(actions, statuses, resolver, persist)
         return report.aborted
+
+    def _telemetry_since(self, before: dict[str, dict[str, int]]) -> dict[str, Any]:
+        delta = Telemetry.delta(before, self._telemetry.snapshot())
+        return {"http_calls": delta["http_calls"], "retries": delta["retries"]}
 
 
 def _elapsed_ms(started: float) -> int:

@@ -16,10 +16,12 @@ from sync_service.db.models import IdMapping, SyncAction, SyncRun
 from sync_service.db.session import create_session_factory
 from sync_service.providers.base import ProvedorDeContas
 from sync_service.providers.mock_adapter import MockProvedorAdapter
+from sync_service.resilience.rate_limit import AsyncRateLimiter
 from sync_service.resilience.retry import RetryPolicy
 from sync_service.sync import store
 from sync_service.sync.executor import ActionExecutor, ExecutionConfig
 from sync_service.sync.runner import SyncRunner
+from sync_service.telemetry import Telemetry
 from sync_testkit.transports import FaultyTransport
 
 TEST_POLICY = RetryPolicy(max_attempts=3, base_delay=0.0, jitter="none")
@@ -38,19 +40,28 @@ class World:
         *,
         batch_size: int = 200,
         max_consecutive_failures: int = 25,
+        max_rps: float = 0,
         wrap_provider: Callable[[ProvedorDeContas], ProvedorDeContas] | None = None,
     ) -> None:
         self.sessions = create_session_factory(engine)
         self.academico_app = create_academico(AcademicoSettings(seed_students=0, seed_classes=0))
         self.provedor_app = create_provedor(ProvedorSettings(chaos_retry_after_seconds=0))
 
+        self.telemetry = Telemetry()
+        provedor_hooks = [self.telemetry.request_hook("provedor")]
+        if max_rps > 0:
+            provedor_hooks.insert(0, AsyncRateLimiter(max_rps).request_hook)
         self.academico_net = FaultyTransport(httpx.ASGITransport(app=self.academico_app))
         self.provedor_net = FaultyTransport(httpx.ASGITransport(app=self.provedor_app))
         self._academico_http = httpx.AsyncClient(
-            transport=self.academico_net, base_url="http://academico"
+            transport=self.academico_net,
+            base_url="http://academico",
+            event_hooks={"request": [self.telemetry.request_hook("academico")]},
         )
         self._provedor_http = httpx.AsyncClient(
-            transport=self.provedor_net, base_url="http://provedor"
+            transport=self.provedor_net,
+            base_url="http://provedor",
+            event_hooks={"request": provedor_hooks},
         )
         # Clientes "de admin": falam direto com os mocks, sem passar pelas falhas injetadas.
         self._academico_admin = httpx.AsyncClient(
@@ -61,13 +72,19 @@ class World:
         )
 
         self.adapter: ProvedorDeContas = MockProvedorAdapter(
-            self._provedor_http, retry_policy=TEST_POLICY
+            self._provedor_http,
+            retry_policy=TEST_POLICY,
+            on_retry=self.telemetry.retry_hook("provedor"),
         )
         if wrap_provider is not None:
             self.adapter = wrap_provider(self.adapter)
         self.runner = SyncRunner(
             self.sessions,
-            AcademicoClient(self._academico_http, retry_policy=TEST_POLICY),
+            AcademicoClient(
+                self._academico_http,
+                retry_policy=TEST_POLICY,
+                on_retry=self.telemetry.retry_hook("academico"),
+            ),
             self.adapter,
             ActionExecutor(
                 self.adapter,
@@ -76,7 +93,9 @@ class World:
                     batch_size=batch_size,
                     max_consecutive_failures=max_consecutive_failures,
                 ),
+                on_retry=self.telemetry.retry_hook("provedor"),
             ),
+            telemetry=self.telemetry,
         )
 
     async def aclose(self) -> None:
@@ -165,6 +184,10 @@ class World:
     async def provider_stats(self) -> dict[str, int]:
         response = await self._provedor_admin.get("/_admin/stats")
         return response.json()["by_route"]
+
+    async def provider_status_counts(self) -> dict[str, int]:
+        response = await self._provedor_admin.get("/_admin/stats")
+        return response.json()["by_status"]
 
     async def provider_writes(self) -> int:
         routes = await self.provider_stats()
