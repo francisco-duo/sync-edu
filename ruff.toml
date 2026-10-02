@@ -1,0 +1,25 @@
+target-version = "py312"
+line-length = 100
+src = [
+    "services/mock-academico/src",
+    "services/mock-provedor/src",
+    "services/sync-service/src",
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle (erros)
+    "W",   # pycodestyle (avisos)
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplificações
+    "ASYNC",
+    "C4",  # comprehensions
+    "PT",  # pytest
+]
+
+[lint.per-file-ignores]
+# Migrations geradas/escritas à mão seguem o template do Alembic.
+"services/sync-service/alembic/versions/*.py" = ["E501"]

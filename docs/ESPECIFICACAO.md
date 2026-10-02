@@ -3,9 +3,6 @@
 > Status: proposta para aprovação. Nenhum código foi escrito.
 > Objetivo: permitir que outra pessoa implemente o projeto sem tomar decisões arquiteturais fundamentais.
 
-## 0. Decisões assumidas (podem ser trocadas antes de implementar)
-
-As 5 perguntas da análise anterior ficaram sem resposta. Adotei as opções recomendadas:
 
 | # | Pergunta | Decisão adotada |
 |---|---|---|

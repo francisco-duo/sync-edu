@@ -1,0 +1,10 @@
+# Ambiente de desenvolvimento: os três serviços (editáveis) + ferramentas.
+# Nos containers cada imagem instala só o seu próprio serviço.
+-e services/mock-academico
+-e services/mock-provedor
+-e services/sync-service
+
+pytest>=8,<10
+pytest-asyncio>=0.24,<2
+respx>=0.21,<1
+ruff>=0.16,<0.17

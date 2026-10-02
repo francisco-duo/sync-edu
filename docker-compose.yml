@@ -1,0 +1,77 @@
+# Pré-requisito: cp .env.example .env   (as variáveis obrigatórias vêm de lá)
+#
+# Dentro da rede "edu-sync" os serviços se enxergam pelo NOME do serviço:
+#   http://mock-academico:8000 · http://mock-provedor:8000 · postgres:5432
+# As portas do host (8000/8001/8002/5433) existem só para você acessar de fora.
+
+name: edu-sync
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB no .env}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [edu-sync]
+
+  mock-academico:
+    build: ./services/mock-academico
+    ports:
+      - "${MOCK_ACADEMICO_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [edu-sync]
+
+  mock-provedor:
+    build: ./services/mock-provedor
+    ports:
+      - "${MOCK_PROVEDOR_PORT:-8002}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [edu-sync]
+
+  sync-service:
+    build: ./services/sync-service
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      ACADEMICO_BASE_URL: http://mock-academico:8000
+      PROVEDOR_BASE_URL: http://mock-provedor:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${SYNC_SERVICE_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-academico:
+        condition: service_healthy
+      mock-provedor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [edu-sync]
+
+volumes:
+  pgdata:
+
+networks:
+  edu-sync:
+    name: edu-sync

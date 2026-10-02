@@ -1,0 +1,16 @@
+# Este arquivo existe só para configurar ferramentas na raiz (pytest).
+# Cada serviço tem o seu próprio pyproject.toml com as dependências.
+# Ruff é configurado em ruff.toml.
+
+[tool.pytest.ini_options]
+testpaths = ["services", "tests"]
+# importlib: permite arquivos de teste com o mesmo nome em serviços diferentes.
+# Por padrão não roda os testes que precisam de PostgreSQL ou do docker compose;
+# eles são pedidos explicitamente com `pytest -m integration` / `-m e2e`.
+addopts = "-ra --import-mode=importlib -m 'not integration and not e2e'"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: precisa de PostgreSQL real (TEST_DATABASE_URL)",
+    "e2e: precisa da stack do docker compose rodando",
+]
