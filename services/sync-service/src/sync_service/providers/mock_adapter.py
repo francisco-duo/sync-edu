@@ -9,10 +9,10 @@ import random
 from collections.abc import Awaitable, Callable
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from sync_service.clients.http import send
-from sync_service.clients.pagination import Page, fetch_all
+from sync_service.clients.paged import PagedReader
 from sync_service.providers.base import (
     ApplyResult,
     Outcome,
@@ -21,7 +21,7 @@ from sync_service.providers.base import (
     ProviderUserRecord,
 )
 from sync_service.resilience.errors import PermanentUpstreamError
-from sync_service.resilience.retry import RetryPolicy, retry_async
+from sync_service.resilience.retry import RetryPolicy
 
 
 class _UserDTO(BaseModel):
@@ -54,24 +54,28 @@ class MockProvedorAdapter:
         on_retry: Callable[[BaseException], None] | None = None,
     ) -> None:
         self._client = client
-        self._policy = retry_policy
         self._concurrency = concurrency
-        self._page_size = page_size
-        self._sleep = sleep
-        self._uniform = uniform
-        self._on_retry = on_retry
+        self._reader = PagedReader(
+            client,
+            retry_policy=retry_policy,
+            concurrency=concurrency,
+            page_size=page_size,
+            sleep=sleep,
+            uniform=uniform,
+            on_retry=on_retry,
+        )
 
     # --- leitura --------------------------------------------------------------------------
 
     async def snapshot(self) -> ProviderSnapshot:
         users, classes = await asyncio.gather(
-            self._list("/users", _UserDTO), self._list("/classes", _ClassDTO)
+            self._reader.read_all("/users", _UserDTO), self._reader.read_all("/classes", _ClassDTO)
         )
         semaphore = asyncio.Semaphore(self._concurrency)
 
         async def members_of(class_id: str) -> list[tuple[str, str]]:
             async with semaphore:
-                members = await self._list(f"/classes/{class_id}/members", _MemberDTO)
+                members = await self._reader.read_all(f"/classes/{class_id}/members", _MemberDTO)
             return [(class_id, member.user_id) for member in members]
 
         per_class = await asyncio.gather(*(members_of(c.id) for c in classes))
@@ -155,37 +159,6 @@ class MockProvedorAdapter:
     ) -> httpx.Response:
         # Sem retry aqui: o executor repete a ação inteira e registra as tentativas.
         return await send(self._client, method, path, expected=frozenset(expected), json=json)
-
-    async def _list[M: BaseModel](self, path: str, model: type[M]) -> list[M]:
-        async def fetch_page(page_number: int) -> Page[M]:
-            return await retry_async(
-                lambda: self._get_page(path, model, page_number),
-                self._policy,
-                sleep=self._sleep,
-                uniform=self._uniform,
-                on_retry=self._on_retry,
-            )
-
-        return await fetch_all(fetch_page, page_size=self._page_size, concurrency=self._concurrency)
-
-    async def _get_page[M: BaseModel](self, path: str, model: type[M], page_number: int) -> Page[M]:
-        response = await send(
-            self._client,
-            "GET",
-            path,
-            expected=frozenset({200}),
-            params={"page": page_number, "page_size": self._page_size},
-        )
-        try:
-            body = response.json()
-            return Page(
-                items=[model.model_validate(item) for item in body["items"]],
-                total=int(body["total"]),
-            )
-        except (ValueError, KeyError, TypeError, ValidationError) as exc:
-            raise PermanentUpstreamError(
-                f"GET {path}: resposta fora do contrato ({exc})", code="INVALID_RESPONSE"
-            ) from exc
 
 
 def _error_details(response: httpx.Response) -> dict[str, str]:

@@ -2,7 +2,8 @@
 #
 # Dentro da rede "edu-sync" os serviços se enxergam pelo NOME do serviço:
 #   http://mock-academico:8000 · http://mock-provedor:8000 · postgres:5432
-# As portas do host (8000/8001/8002/5433) existem só para você acessar de fora.
+# As portas do host (8000/8001/8002/5433) existem só para você acessar de fora e ficam presas
+# a 127.0.0.1: os serviços não têm autenticação e o banco usa a senha do seu .env.
 
 name: edu-sync
 
@@ -14,7 +15,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
       POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB no .env}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +31,7 @@ services:
       SEED_STUDENTS: ${SEED_STUDENTS:-20}
       SEED_CLASSES: ${SEED_CLASSES:-3}
     ports:
-      - "${MOCK_ACADEMICO_PORT:-8001}:8000"
+      - "127.0.0.1:${MOCK_ACADEMICO_PORT:-8001}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 3s
@@ -47,7 +48,7 @@ services:
       CHAOS_RATE_LIMIT_RPS: ${PROVEDOR_CHAOS_RATE_LIMIT_RPS:-0}
       CHAOS_LATENCY_MS: ${PROVEDOR_CHAOS_LATENCY_MS:-0}
     ports:
-      - "${MOCK_PROVEDOR_PORT:-8002}:8000"
+      - "127.0.0.1:${MOCK_PROVEDOR_PORT:-8002}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 3s
@@ -74,7 +75,7 @@ services:
       BATCH_SIZE: ${BATCH_SIZE:-200}
       MAX_CONSECUTIVE_FAILURES: ${MAX_CONSECUTIVE_FAILURES:-25}
     ports:
-      - "${SYNC_SERVICE_PORT:-8000}:8000"
+      - "127.0.0.1:${SYNC_SERVICE_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy

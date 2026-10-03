@@ -148,9 +148,7 @@ class ActionExecutor:
             )
         except RetriesExhaustedError as exc:
             return self._failed(action, calls, ErrorCode.RETRIES_EXHAUSTED, str(exc.last_error))
-        except PermanentUpstreamError as exc:
-            return self._failed(action, calls, exc.code, exc.message)
-        except UpstreamError as exc:
+        except UpstreamError as exc:  # permanente: falha na 1ª tentativa, com o código do provedor
             return self._failed(action, calls, exc.code, exc.message)
         except Exception as exc:  # um bug numa ação não pode derrubar o run inteiro
             logger.exception("erro inesperado ao executar %s", action.key)

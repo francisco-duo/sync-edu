@@ -51,7 +51,14 @@ class SyncRunner:
     def spawn(self, coroutine: Coroutine[Any, Any, None]) -> None:
         task = asyncio.create_task(coroutine)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            # Ex.: o banco caiu até na hora de fechar o run. O run pode ficar "running" até o
+            # próximo startup marcá-lo como `interrupted`; pelo menos isto aparece no log.
+            logger.error("tarefa de sincronização terminou com erro", exc_info=task.exception())
 
     async def wait_idle(self) -> None:
         while self._tasks:

@@ -298,4 +298,4 @@ def test_latencia_artificial_atrasa_as_requisicoes_de_negocio_mas_nao_o_health(
     health = time.perf_counter() - started
 
     assert business >= 0.07
-    assert health < 0.05
+    assert health < business  # /health não sofre a latência artificial

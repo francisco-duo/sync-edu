@@ -922,4 +922,9 @@ Cada etapa termina com testes passando e `ruff` limpo.
 - **Mocks mais completos:** `mock-academico` com Faker e `/_admin/changes` (alterações diárias);
   `mock-provedor` com limite de taxa, latência e `/_admin/summary`. Ambos têm `/_admin/stats`.
 - **Persistência dos resultados** em um único `UPDATE ... FROM unnest(...)` por lote.
+- **Revisão final:** a leitura paginada (página + retry + validação) foi extraída para
+  `clients/paged.py` (`PagedReader`), usado pelo cliente do acadêmico e pelo adapter; as portas do
+  compose passaram a ficar presas a `127.0.0.1`; tarefas em segundo plano que falham agora são
+  logadas. A pasta `tests/` da raiz (contrato/e2e) e `docs/adr` foram removidas: ficaram vazias,
+  porque os testes de integração do `sync-service` cumprem esse papel.
 

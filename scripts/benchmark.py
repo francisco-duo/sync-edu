@@ -279,9 +279,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument("--sync-url", default="http://localhost:8000")
-    parser.add_argument("--academico-url", default="http://localhost:8001")
-    parser.add_argument("--provedor-url", default="http://localhost:8002")
+    parser.add_argument("--sync-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--academico-url", default="http://127.0.0.1:8001")
+    parser.add_argument("--provedor-url", default="http://127.0.0.1:8002")
     parser.add_argument("--label", default="padrão")
     parser.add_argument("--students", type=int, default=4000)
     parser.add_argument("--classes", type=int, default=90)

@@ -1,5 +1,8 @@
 """Sincronização ponta a ponta: PostgreSQL real + mock-academico + mock-provedor em processo."""
 
+import asyncio
+import uuid
+
 import httpx
 import pytest
 from sqlalchemy import text
@@ -299,8 +302,6 @@ async def test_retry_failed_recusa_dry_run_run_inexistente_e_run_em_execucao(wor
     with pytest.raises(store.RunIsDryRunError):
         await world.runner.begin_retry(dry.id)
 
-    import uuid
-
     with pytest.raises(store.RunNotFoundError):
         await world.runner.begin_retry(uuid.uuid4())
 
@@ -438,3 +439,16 @@ async def test_run_em_execucao_quando_o_processo_cai_vira_interrupted(world: Wor
     assert run.status == RunStatus.INTERRUPTED
     assert run.finished_at is not None
     await world.runner.create_run(dry_run=False)  # o lock foi liberado
+
+
+async def test_dois_runs_reais_simultaneos_so_um_ganha_o_lock(world: World) -> None:
+    """A exclusão mútua vem do índice único do banco, não de memória: vale sob concorrência real."""
+    results = await asyncio.gather(
+        *(world.runner.create_run(dry_run=False) for _ in range(8)), return_exceptions=True
+    )
+
+    winners = [r for r in results if isinstance(r, uuid.UUID)]
+    losers = [r for r in results if isinstance(r, store.RunInProgressError)]
+    assert len(winners) == 1
+    assert len(losers) == 7
+    assert all(loser.run_id == winners[0] for loser in losers)

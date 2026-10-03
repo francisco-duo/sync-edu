@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,8 @@ from sync_service.sync import store
 from sync_service.sync.executor import ActionExecutor, ExecutionConfig
 from sync_service.sync.runner import SyncRunner
 from sync_service.telemetry import Telemetry
+
+logger = logging.getLogger(__name__)
 
 HTTP_TIMEOUT = httpx.Timeout(connect=3.0, read=10.0, write=10.0, pool=5.0)
 
@@ -104,4 +107,4 @@ async def _mark_interrupted(sessions: store.SessionFactory) -> None:
     try:
         await store.mark_interrupted_runs(sessions)
     except Exception:  # noqa: BLE001 (tabela ainda inexistente, banco fora do ar...)
-        return
+        logger.warning("não foi possível marcar runs interrompidos no startup", exc_info=True)
